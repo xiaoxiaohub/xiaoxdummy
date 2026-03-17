@@ -174,12 +174,17 @@ XiaoxdummyHardwareInterface::export_command_interfaces()
 hardware_interface::return_type XiaoxdummyHardwareInterface::read(
   const rclcpp::Time &, const rclcpp::Duration & period)
 {
+  serial_flush();
   serial_send("#GETJPOS\n");
-  auto resp = serial_read_line();
+
+  // Read lines until we find one starting with "ok" (skip stale write responses)
+  std::string resp;
+  for (int attempt = 0; attempt < 5; ++attempt) {
+    resp = serial_read_line();
+    if (resp.rfind("ok", 0) == 0) break;
+  }
 
   if (resp.rfind("ok", 0) != 0) {
-    RCLCPP_WARN_THROTTLE(get_logger(), *rclcpp::Clock::make_shared(), 2000,
-      "Bad GETJPOS response: %s", resp.c_str());
     return hardware_interface::return_type::OK;
   }
 
@@ -187,8 +192,6 @@ hardware_interface::return_type XiaoxdummyHardwareInterface::read(
   int n = sscanf(resp.c_str(), "ok %lf %lf %lf %lf %lf %lf",
     &j[0], &j[1], &j[2], &j[3], &j[4], &j[5]);
   if (n != static_cast<int>(NUM_JOINTS)) {
-    RCLCPP_WARN_THROTTLE(get_logger(), *rclcpp::Clock::make_shared(), 2000,
-      "GETJPOS parse error (got %d values)", n);
     return hardware_interface::return_type::OK;
   }
 
@@ -221,7 +224,6 @@ hardware_interface::return_type XiaoxdummyHardwareInterface::write(
   cmd << "," << command_speed_deg_s_ << "\n";
 
   serial_send(cmd.str());
-  serial_read_line(50);  // read and discard queue-size response
 
   return hardware_interface::return_type::OK;
 }

@@ -7,6 +7,7 @@ import rclpy
 from rclpy.node import Node
 
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
+from sensor_msgs.msg import JointState
 from builtin_interfaces.msg import Duration
 
 
@@ -21,10 +22,12 @@ class DummyKeyboardController(Node):
         )
 
         self.joint_names = ['Joint1', 'Joint2', 'Joint3', 'Joint4', 'Joint5', 'Joint6']
-        self.current_positions = [0.0] * 6
+        self.current_positions = None  # Will be initialized from /joint_states
 
         self.step = 0.1  # 每次按键变化弧度
         self.limit = 3.14
+
+        self._wait_for_joint_states()
 
         self.get_logger().info(
             '\n键盘控制说明：\n'
@@ -36,6 +39,28 @@ class DummyKeyboardController(Node):
             'y/h -> Joint6 +/-\n'
             'z   -> 全部回零\n'
             'x   -> 退出\n'
+        )
+
+    def _wait_for_joint_states(self):
+        self.get_logger().info('等待 /joint_states 获取当前关节位置...')
+        received = [False]
+        positions = [0.0] * 6
+
+        def cb(msg):
+            for i, name in enumerate(self.joint_names):
+                if name in msg.name:
+                    idx = msg.name.index(name)
+                    positions[i] = msg.position[idx]
+            received[0] = True
+
+        sub = self.create_subscription(JointState, '/joint_states', cb, 10)
+        while rclpy.ok() and not received[0]:
+            rclpy.spin_once(self, timeout_sec=0.5)
+
+        self.destroy_subscription(sub)
+        self.current_positions = list(positions)
+        self.get_logger().info(
+            f'初始关节位置 (rad): {[round(v, 3) for v in self.current_positions]}'
         )
 
     def get_key(self):
