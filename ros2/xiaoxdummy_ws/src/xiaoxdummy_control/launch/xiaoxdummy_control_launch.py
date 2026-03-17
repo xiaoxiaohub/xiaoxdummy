@@ -51,6 +51,39 @@ def generate_launch_description():
 
     actions.append(
         DeclareLaunchArgument(
+            'use_real_hardware',
+            default_value='false',
+            description='Whether to use real robot hardware via serial',
+            choices=['true', 'false', 'True', 'False']
+        )
+    )
+
+    actions.append(
+        DeclareLaunchArgument(
+            'serial_port',
+            default_value='/dev/ttyACM0',
+            description='Serial port for real hardware'
+        )
+    )
+
+    actions.append(
+        DeclareLaunchArgument(
+            'baud_rate',
+            default_value='115200',
+            description='Baud rate for serial communication'
+        )
+    )
+
+    actions.append(
+        DeclareLaunchArgument(
+            'command_speed',
+            default_value='180.0',
+            description='Joint command speed in deg/s for real hardware'
+        )
+    )
+
+    actions.append(
+        DeclareLaunchArgument(
             'control_file',
             default_value='',
             description='choice the control file',
@@ -62,8 +95,19 @@ def generate_launch_description():
     )
 
     use_gazebo = LaunchConfiguration('use_gazebo', default='false')
+    use_real_hardware = LaunchConfiguration('use_real_hardware', default='false')
+    serial_port = LaunchConfiguration('serial_port')
+    baud_rate = LaunchConfiguration('baud_rate')
+    command_speed = LaunchConfiguration('command_speed')
 
-    robot_desc = Command(['xacro ', file_path, ' use_gazebo:=', use_gazebo])
+    robot_desc = Command([
+        'xacro ', file_path,
+        ' use_gazebo:=', use_gazebo,
+        ' use_real_hardware:=', use_real_hardware,
+        ' serial_port:=', serial_port,
+        ' baud_rate:=', baud_rate,
+        ' command_speed:=', command_speed,
+    ])
 
 
     actions.append(
@@ -98,7 +142,7 @@ def generate_launch_description():
         name='robot_state_publisher',
         output='both',
         parameters=[
-            {'use_sim_time': True},
+            {'use_sim_time': use_gazebo},
             {'robot_description': robot_desc}
         ]
     )

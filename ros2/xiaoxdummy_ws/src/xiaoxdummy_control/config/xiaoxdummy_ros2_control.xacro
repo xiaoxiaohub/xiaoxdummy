@@ -2,6 +2,10 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="xiaoxdummy">
 
   <xacro:arg name="use_gazebo" default="false"/>
+  <xacro:arg name="use_real_hardware" default="false"/>
+  <xacro:arg name="serial_port" default="/dev/ttyACM0"/>
+  <xacro:arg name="baud_rate" default="115200"/>
+  <xacro:arg name="command_speed" default="180.0"/>
 
   <xacro:include filename="$(find xiaoxdummy_control)/config/xiaoxdummy.urdf"/>
 
@@ -55,12 +59,21 @@
 
     <hardware>
 
-      <xacro:if value="$(arg use_gazebo)">
-        <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+      <xacro:if value="$(arg use_real_hardware)">
+        <plugin>xiaoxdummy_control/XiaoxdummyHardwareInterface</plugin>
+        <param name="serial_port">$(arg serial_port)</param>
+        <param name="baud_rate">$(arg baud_rate)</param>
+        <param name="command_speed">$(arg command_speed)</param>
       </xacro:if>
 
-      <xacro:unless value="$(arg use_gazebo)">
-        <plugin>mock_components/GenericSystem</plugin>
+      <xacro:unless value="$(arg use_real_hardware)">
+        <xacro:if value="$(arg use_gazebo)">
+          <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+        </xacro:if>
+
+        <xacro:unless value="$(arg use_gazebo)">
+          <plugin>mock_components/GenericSystem</plugin>
+        </xacro:unless>
       </xacro:unless>
 
     </hardware>
