@@ -36,6 +36,12 @@ public:
   hardware_interface::CallbackReturn on_cleanup(
     const rclcpp_lifecycle::State & previous_state) override;
 
+  hardware_interface::CallbackReturn on_shutdown(
+    const rclcpp_lifecycle::State & previous_state) override;
+
+  hardware_interface::CallbackReturn on_error(
+    const rclcpp_lifecycle::State & previous_state) override;
+
   std::vector<hardware_interface::StateInterface> export_state_interfaces() override;
   std::vector<hardware_interface::CommandInterface> export_command_interfaces() override;
 
@@ -90,8 +96,20 @@ private:
     int retries = 1,
     int timeout_ms = 200,
     int retry_sleep_ms = 100);
+  bool initialize_serial_session(bool reset_commands);
+  bool send_start_command();
+  bool send_stop_command();
+  bool recover_serial_connection(const std::string & reason);
+  void apply_joint_state_feedback(
+    const std::array<double, NUM_JOINTS> & joints_deg,
+    double dt,
+    bool reset_commands);
 
   double clamp_deg(double value, size_t joint_idx);
+
+  bool motors_enabled_ = false;
+  int consecutive_read_failures_ = 0;
+  int consecutive_write_failures_ = 0;
 };
 
 }  // namespace xiaoxdummy_control

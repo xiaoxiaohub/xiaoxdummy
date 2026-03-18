@@ -1,6 +1,9 @@
 controller_manager:
   ros__parameters:
     update_rate: 20  # Hz
+    hardware_components_initial_state:
+      inactive:
+        - XiaoxdummySystem
 
     arm_controller:
       type: joint_trajectory_controller/JointTrajectoryController

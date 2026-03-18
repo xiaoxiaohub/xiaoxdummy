@@ -4,6 +4,7 @@
 #include <termios.h>
 #include <unistd.h>
 #include <sys/select.h>
+#include <cerrno>
 #include <cstring>
 #include <sstream>
 #include <iomanip>
@@ -22,6 +23,18 @@ static rclcpp::Logger get_logger()
 {
   return rclcpp::get_logger("XiaoxdummyHardwareInterface");
 }
+
+namespace
+{
+
+constexpr int kSerialInitRetries = 25;
+constexpr int kSerialReplyTimeoutMs = 200;
+constexpr int kSerialRetrySleepMs = 200;
+constexpr int kReadFailureThreshold = 3;
+constexpr int kWriteFailureThreshold = 3;
+constexpr double kRecoveryPauseThresholdSec = 5.0;
+
+}  // namespace
 
 
 // ---------------------------------------------------------------------------
@@ -68,10 +81,14 @@ hardware_interface::CallbackReturn XiaoxdummyHardwareInterface::on_configure(
     return hardware_interface::CallbackReturn::ERROR;
   }
 
-  // Give USB CDC devices a short settling window after the port is opened.
-  serial_flush_input();
-  std::this_thread::sleep_for(std::chrono::milliseconds(250));
-  serial_flush_input();
+  if (!initialize_serial_session(true)) {
+    serial_close();
+    return hardware_interface::CallbackReturn::ERROR;
+  }
+
+  motors_enabled_ = false;
+  consecutive_read_failures_ = 0;
+  consecutive_write_failures_ = 0;
 
   RCLCPP_INFO(get_logger(), "Serial port %s opened", serial_port_.c_str());
   return hardware_interface::CallbackReturn::SUCCESS;
@@ -81,41 +98,41 @@ hardware_interface::CallbackReturn XiaoxdummyHardwareInterface::on_configure(
 hardware_interface::CallbackReturn XiaoxdummyHardwareInterface::on_activate(
   const rclcpp_lifecycle::State &)
 {
-  std::string resp;
-
-  // Retry startup commands so USB devices that reset on open have time to boot.
-  if (!serial_send_and_read_reply("#CMDMODE 2\n", resp, 25, 200, 200)) {
-    RCLCPP_ERROR(get_logger(), "No response to CMDMODE command on %s", serial_port_.c_str());
-    return hardware_interface::CallbackReturn::ERROR;
+  if (!send_start_command()) {
+    if (!recover_serial_connection("activate")) {
+      return hardware_interface::CallbackReturn::ERROR;
+    }
+    if (!send_start_command()) {
+      RCLCPP_ERROR(get_logger(), "No response to START command on %s", serial_port_.c_str());
+      return hardware_interface::CallbackReturn::ERROR;
+    }
   }
-  RCLCPP_INFO(get_logger(), "CMDMODE response: %s", resp.c_str());
 
-  if (!serial_send_and_read_reply("!START\n", resp, 25, 200, 200)) {
-    RCLCPP_ERROR(get_logger(), "No response to START command on %s", serial_port_.c_str());
-    return hardware_interface::CallbackReturn::ERROR;
-  }
-  RCLCPP_INFO(get_logger(), "START response: %s", resp.c_str());
+  motors_enabled_ = true;
 
   std::array<double, NUM_JOINTS> joints_deg{};
-  if (!request_joint_positions(joints_deg, 25, 200, 200)) {
-    RCLCPP_ERROR(
-      get_logger(),
-      "Failed to read initial joint positions from %s after startup",
-      serial_port_.c_str());
-    return hardware_interface::CallbackReturn::ERROR;
+  if (!request_joint_positions(
+      joints_deg, kSerialInitRetries, kSerialReplyTimeoutMs, kSerialRetrySleepMs))
+  {
+    if (!recover_serial_connection("readback after enable")) {
+      RCLCPP_ERROR(
+        get_logger(),
+        "Failed to read joint positions from %s after enabling",
+        serial_port_.c_str());
+      return hardware_interface::CallbackReturn::ERROR;
+    }
+  } else {
+    apply_joint_state_feedback(joints_deg, 0.0, true);
+    RCLCPP_INFO(get_logger(),
+      "Enabled joints (deg): [%.2f, %.2f, %.2f, %.2f, %.2f, %.2f]",
+      joints_deg[0], joints_deg[1], joints_deg[2],
+      joints_deg[3], joints_deg[4], joints_deg[5]);
   }
 
-  for (size_t i = 0; i < NUM_JOINTS; ++i) {
-    hw_states_positions_[i] = joints_deg[i] * DEG_TO_RAD;
-    hw_commands_positions_[i] = hw_states_positions_[i];
-    prev_positions_[i] = hw_states_positions_[i];
-  }
-  RCLCPP_INFO(get_logger(),
-    "Initial joints (deg): [%.2f, %.2f, %.2f, %.2f, %.2f, %.2f]",
-    joints_deg[0], joints_deg[1], joints_deg[2],
-    joints_deg[3], joints_deg[4], joints_deg[5]);
+  consecutive_read_failures_ = 0;
+  consecutive_write_failures_ = 0;
 
-  RCLCPP_INFO(get_logger(), "Activated – motors enabled");
+  RCLCPP_INFO(get_logger(), "Activated - motors enabled");
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
@@ -123,10 +140,14 @@ hardware_interface::CallbackReturn XiaoxdummyHardwareInterface::on_activate(
 hardware_interface::CallbackReturn XiaoxdummyHardwareInterface::on_deactivate(
   const rclcpp_lifecycle::State &)
 {
-  serial_send("!STOP\n");
-  auto resp = serial_read_line();
-  RCLCPP_INFO(get_logger(), "STOP response: %s", resp.c_str());
+  if (!send_stop_command()) {
+    RCLCPP_WARN(get_logger(), "STOP command did not get a response on %s", serial_port_.c_str());
+  }
 
+  motors_enabled_ = false;
+  consecutive_write_failures_ = 0;
+
+  RCLCPP_INFO(get_logger(), "Deactivated - motors disabled");
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
@@ -134,8 +155,32 @@ hardware_interface::CallbackReturn XiaoxdummyHardwareInterface::on_deactivate(
 hardware_interface::CallbackReturn XiaoxdummyHardwareInterface::on_cleanup(
   const rclcpp_lifecycle::State &)
 {
+  send_stop_command();
+  motors_enabled_ = false;
   serial_close();
   RCLCPP_INFO(get_logger(), "Serial port closed");
+  return hardware_interface::CallbackReturn::SUCCESS;
+}
+
+
+hardware_interface::CallbackReturn XiaoxdummyHardwareInterface::on_shutdown(
+  const rclcpp_lifecycle::State &)
+{
+  send_stop_command();
+  motors_enabled_ = false;
+  serial_close();
+  RCLCPP_INFO(get_logger(), "Shutdown complete");
+  return hardware_interface::CallbackReturn::SUCCESS;
+}
+
+
+hardware_interface::CallbackReturn XiaoxdummyHardwareInterface::on_error(
+  const rclcpp_lifecycle::State &)
+{
+  send_stop_command();
+  motors_enabled_ = false;
+  serial_close();
+  RCLCPP_ERROR(get_logger(), "Hardware interface entered error state");
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
@@ -177,39 +222,25 @@ XiaoxdummyHardwareInterface::export_command_interfaces()
 hardware_interface::return_type XiaoxdummyHardwareInterface::read(
   const rclcpp::Time &, const rclcpp::Duration & period)
 {
-  serial_flush_input();
-  serial_send("#GETJPOS\n");
-
-  // Read lines until we find one starting with "ok" (skip stale write responses)
-  std::string resp;
-  for (int attempt = 0; attempt < 5; ++attempt) {
-    resp = serial_read_line();
-    auto ok_pos = resp.find("ok");
-    if (ok_pos != std::string::npos && ok_pos > 0) {
-      resp = resp.substr(ok_pos);
-    }
-    if (resp.rfind("ok", 0) == 0) break;
+  if (period.seconds() > kRecoveryPauseThresholdSec) {
+    RCLCPP_WARN(
+      get_logger(),
+      "Detected a control-loop pause of %.2f s, reinitializing serial session",
+      period.seconds());
+    recover_serial_connection("long control loop pause");
   }
 
-  if (resp.rfind("ok", 0) != 0) {
+  std::array<double, NUM_JOINTS> joints_deg{};
+  if (!request_joint_positions(joints_deg, 1, 100, 20)) {
+    ++consecutive_read_failures_;
+    if (consecutive_read_failures_ >= kReadFailureThreshold) {
+      recover_serial_connection("joint feedback timeout");
+    }
     return hardware_interface::return_type::OK;
   }
 
-  double j[NUM_JOINTS];
-  int n = sscanf(resp.c_str(), "ok %lf %lf %lf %lf %lf %lf",
-    &j[0], &j[1], &j[2], &j[3], &j[4], &j[5]);
-  if (n != static_cast<int>(NUM_JOINTS)) {
-    return hardware_interface::return_type::OK;
-  }
-
-  double dt = period.seconds();
-  for (size_t i = 0; i < NUM_JOINTS; ++i) {
-    double new_pos = j[i] * DEG_TO_RAD;
-    if (dt > 0.0) {
-      hw_states_velocities_[i] = (new_pos - hw_states_positions_[i]) / dt;
-    }
-    hw_states_positions_[i] = new_pos;
-  }
+  consecutive_read_failures_ = 0;
+  apply_joint_state_feedback(joints_deg, period.seconds(), false);
 
   return hardware_interface::return_type::OK;
 }
@@ -218,6 +249,11 @@ hardware_interface::return_type XiaoxdummyHardwareInterface::read(
 hardware_interface::return_type XiaoxdummyHardwareInterface::write(
   const rclcpp::Time &, const rclcpp::Duration &)
 {
+  if (!motors_enabled_) {
+    consecutive_write_failures_ = 0;
+    return hardware_interface::return_type::OK;
+  }
+
   std::ostringstream cmd;
   cmd << std::fixed << std::setprecision(2) << ">";
 
@@ -230,9 +266,146 @@ hardware_interface::return_type XiaoxdummyHardwareInterface::write(
 
   cmd << "," << command_speed_deg_s_ << "\n";
 
-  serial_send(cmd.str());
+  if (!serial_send(cmd.str())) {
+    ++consecutive_write_failures_;
+    if (consecutive_write_failures_ >= kWriteFailureThreshold) {
+      recover_serial_connection("joint command write failure");
+    }
+    return hardware_interface::return_type::ERROR;
+  }
 
+  consecutive_write_failures_ = 0;
   return hardware_interface::return_type::OK;
+}
+
+
+// ---------------------------------------------------------------------------
+// Session helpers
+// ---------------------------------------------------------------------------
+
+bool XiaoxdummyHardwareInterface::initialize_serial_session(bool reset_commands)
+{
+  // Give USB CDC devices a short settling window after the port is opened.
+  serial_flush_input();
+  std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  serial_flush_input();
+
+  std::string resp;
+  if (!serial_send_and_read_reply(
+      "#CMDMODE 2\n", resp, kSerialInitRetries, kSerialReplyTimeoutMs, kSerialRetrySleepMs))
+  {
+    RCLCPP_ERROR(get_logger(), "No response to CMDMODE command on %s", serial_port_.c_str());
+    return false;
+  }
+  RCLCPP_INFO(get_logger(), "CMDMODE response: %s", resp.c_str());
+
+  std::array<double, NUM_JOINTS> joints_deg{};
+  if (!request_joint_positions(
+      joints_deg, kSerialInitRetries, kSerialReplyTimeoutMs, kSerialRetrySleepMs))
+  {
+    RCLCPP_ERROR(
+      get_logger(),
+      "Failed to read initial joint positions from %s",
+      serial_port_.c_str());
+    return false;
+  }
+
+  apply_joint_state_feedback(joints_deg, 0.0, reset_commands);
+  RCLCPP_INFO(get_logger(),
+    "Initial joints (deg): [%.2f, %.2f, %.2f, %.2f, %.2f, %.2f]",
+    joints_deg[0], joints_deg[1], joints_deg[2],
+    joints_deg[3], joints_deg[4], joints_deg[5]);
+
+  return true;
+}
+
+
+bool XiaoxdummyHardwareInterface::send_start_command()
+{
+  std::string resp;
+  if (!serial_send_and_read_reply(
+      "!START\n", resp, kSerialInitRetries, kSerialReplyTimeoutMs, kSerialRetrySleepMs))
+  {
+    return false;
+  }
+
+  RCLCPP_INFO(get_logger(), "START response: %s", resp.c_str());
+  return true;
+}
+
+
+bool XiaoxdummyHardwareInterface::send_stop_command()
+{
+  if (serial_fd_ < 0) {
+    return false;
+  }
+
+  std::string resp;
+  if (!serial_send_and_read_reply("!STOP\n", resp, 3, 100, 50)) {
+    return false;
+  }
+
+  RCLCPP_INFO(get_logger(), "STOP response: %s", resp.c_str());
+  return true;
+}
+
+
+bool XiaoxdummyHardwareInterface::recover_serial_connection(const std::string & reason)
+{
+  const bool restore_motor_state = motors_enabled_;
+
+  RCLCPP_WARN(
+    get_logger(),
+    "Serial communication issue detected (%s); attempting recovery on %s",
+    reason.c_str(),
+    serial_port_.c_str());
+
+  serial_close();
+  if (!serial_open()) {
+    return false;
+  }
+
+  if (!initialize_serial_session(true)) {
+    serial_close();
+    return false;
+  }
+
+  if (restore_motor_state && !send_start_command()) {
+    RCLCPP_ERROR(
+      get_logger(),
+      "Recovered serial port %s but failed to re-enable motors",
+      serial_port_.c_str());
+    serial_close();
+    return false;
+  }
+
+  motors_enabled_ = restore_motor_state;
+  consecutive_read_failures_ = 0;
+  consecutive_write_failures_ = 0;
+
+  RCLCPP_INFO(get_logger(), "Serial recovery succeeded on %s", serial_port_.c_str());
+  return true;
+}
+
+
+void XiaoxdummyHardwareInterface::apply_joint_state_feedback(
+  const std::array<double, NUM_JOINTS> & joints_deg,
+  double dt,
+  bool reset_commands)
+{
+  for (size_t i = 0; i < NUM_JOINTS; ++i) {
+    const double new_pos = joints_deg[i] * DEG_TO_RAD;
+    if (dt > 0.0) {
+      hw_states_velocities_[i] = (new_pos - hw_states_positions_[i]) / dt;
+    } else {
+      hw_states_velocities_[i] = 0.0;
+    }
+    hw_states_positions_[i] = new_pos;
+    prev_positions_[i] = new_pos;
+    if (reset_commands) {
+      hw_commands_positions_[i] = new_pos;
+    }
+  }
 }
 
 
