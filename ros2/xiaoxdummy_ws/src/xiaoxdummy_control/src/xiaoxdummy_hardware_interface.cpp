@@ -68,9 +68,10 @@ hardware_interface::CallbackReturn XiaoxdummyHardwareInterface::on_configure(
     return hardware_interface::CallbackReturn::ERROR;
   }
 
-  serial_flush();
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  serial_flush();
+  // Give USB CDC devices a short settling window after the port is opened.
+  serial_flush_input();
+  std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  serial_flush_input();
 
   RCLCPP_INFO(get_logger(), "Serial port %s opened", serial_port_.c_str());
   return hardware_interface::CallbackReturn::SUCCESS;
@@ -80,37 +81,39 @@ hardware_interface::CallbackReturn XiaoxdummyHardwareInterface::on_configure(
 hardware_interface::CallbackReturn XiaoxdummyHardwareInterface::on_activate(
   const rclcpp_lifecycle::State &)
 {
-  // Set interruptable command mode (mode 2, the firmware default)
-  serial_send("#CMDMODE 2\n");
-  auto resp = serial_read_line();
+  std::string resp;
+
+  // Retry startup commands so USB devices that reset on open have time to boot.
+  if (!serial_send_and_read_reply("#CMDMODE 2\n", resp, 25, 200, 200)) {
+    RCLCPP_ERROR(get_logger(), "No response to CMDMODE command on %s", serial_port_.c_str());
+    return hardware_interface::CallbackReturn::ERROR;
+  }
   RCLCPP_INFO(get_logger(), "CMDMODE response: %s", resp.c_str());
 
-  // Enable motors
-  serial_send("!START\n");
-  resp = serial_read_line();
+  if (!serial_send_and_read_reply("!START\n", resp, 25, 200, 200)) {
+    RCLCPP_ERROR(get_logger(), "No response to START command on %s", serial_port_.c_str());
+    return hardware_interface::CallbackReturn::ERROR;
+  }
   RCLCPP_INFO(get_logger(), "START response: %s", resp.c_str());
 
-  // Read current joint positions to initialize state
-  serial_send("#GETJPOS\n");
-  resp = serial_read_line();
-
-  if (resp.rfind("ok", 0) == 0) {
-    double j[NUM_JOINTS];
-    int n = sscanf(resp.c_str(), "ok %lf %lf %lf %lf %lf %lf",
-      &j[0], &j[1], &j[2], &j[3], &j[4], &j[5]);
-    if (n == static_cast<int>(NUM_JOINTS)) {
-      for (size_t i = 0; i < NUM_JOINTS; ++i) {
-        hw_states_positions_[i] = j[i] * DEG_TO_RAD;
-        hw_commands_positions_[i] = hw_states_positions_[i];
-        prev_positions_[i] = hw_states_positions_[i];
-      }
-      RCLCPP_INFO(get_logger(),
-        "Initial joints (deg): [%.2f, %.2f, %.2f, %.2f, %.2f, %.2f]",
-        j[0], j[1], j[2], j[3], j[4], j[5]);
-    }
-  } else {
-    RCLCPP_WARN(get_logger(), "Failed to read initial joint positions: %s", resp.c_str());
+  std::array<double, NUM_JOINTS> joints_deg{};
+  if (!request_joint_positions(joints_deg, 25, 200, 200)) {
+    RCLCPP_ERROR(
+      get_logger(),
+      "Failed to read initial joint positions from %s after startup",
+      serial_port_.c_str());
+    return hardware_interface::CallbackReturn::ERROR;
   }
+
+  for (size_t i = 0; i < NUM_JOINTS; ++i) {
+    hw_states_positions_[i] = joints_deg[i] * DEG_TO_RAD;
+    hw_commands_positions_[i] = hw_states_positions_[i];
+    prev_positions_[i] = hw_states_positions_[i];
+  }
+  RCLCPP_INFO(get_logger(),
+    "Initial joints (deg): [%.2f, %.2f, %.2f, %.2f, %.2f, %.2f]",
+    joints_deg[0], joints_deg[1], joints_deg[2],
+    joints_deg[3], joints_deg[4], joints_deg[5]);
 
   RCLCPP_INFO(get_logger(), "Activated – motors enabled");
   return hardware_interface::CallbackReturn::SUCCESS;
@@ -174,13 +177,17 @@ XiaoxdummyHardwareInterface::export_command_interfaces()
 hardware_interface::return_type XiaoxdummyHardwareInterface::read(
   const rclcpp::Time &, const rclcpp::Duration & period)
 {
-  serial_flush();
+  serial_flush_input();
   serial_send("#GETJPOS\n");
 
   // Read lines until we find one starting with "ok" (skip stale write responses)
   std::string resp;
   for (int attempt = 0; attempt < 5; ++attempt) {
     resp = serial_read_line();
+    auto ok_pos = resp.find("ok");
+    if (ok_pos != std::string::npos && ok_pos > 0) {
+      resp = resp.substr(ok_pos);
+    }
     if (resp.rfind("ok", 0) == 0) break;
   }
 
@@ -273,6 +280,7 @@ bool XiaoxdummyHardwareInterface::serial_open()
   tty.c_cflag &= ~CSIZE;
   tty.c_cflag |= CS8;        // 8 data bits
   tty.c_cflag &= ~CRTSCTS;  // no HW flow control
+  tty.c_cflag &= ~HUPCL;    // avoid toggling hangup on close/open for USB CDC
   tty.c_cflag |= CREAD | CLOCAL;
 
   tty.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG);  // raw input
@@ -307,7 +315,12 @@ bool XiaoxdummyHardwareInterface::serial_send(const std::string & msg)
 {
   if (serial_fd_ < 0) return false;
   ssize_t written = ::write(serial_fd_, msg.c_str(), msg.size());
-  return written == static_cast<ssize_t>(msg.size());
+  if (written != static_cast<ssize_t>(msg.size())) {
+    RCLCPP_WARN(
+      get_logger(), "Serial write short write (%zd/%zu bytes)", written, msg.size());
+    return false;
+  }
+  return true;
 }
 
 
@@ -347,11 +360,83 @@ std::string XiaoxdummyHardwareInterface::serial_read_line(int timeout_ms)
 }
 
 
-void XiaoxdummyHardwareInterface::serial_flush()
+void XiaoxdummyHardwareInterface::serial_flush_input()
 {
   if (serial_fd_ >= 0) {
-    tcflush(serial_fd_, TCIOFLUSH);
+    tcflush(serial_fd_, TCIFLUSH);
   }
+}
+
+
+bool XiaoxdummyHardwareInterface::serial_send_and_read_reply(
+  const std::string & msg,
+  std::string & reply,
+  int retries,
+  int timeout_ms,
+  int retry_sleep_ms)
+{
+  reply.clear();
+
+  for (int attempt = 0; attempt < retries; ++attempt) {
+    serial_flush_input();
+    if (!serial_send(msg)) {
+      return false;
+    }
+
+    reply = serial_read_line(timeout_ms);
+    if (!reply.empty()) {
+      return true;
+    }
+
+    if (attempt + 1 < retries) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(retry_sleep_ms));
+    }
+  }
+
+  return false;
+}
+
+
+bool XiaoxdummyHardwareInterface::request_joint_positions(
+  std::array<double, NUM_JOINTS> & joints_deg,
+  int retries,
+  int timeout_ms,
+  int retry_sleep_ms)
+{
+  for (int attempt = 0; attempt < retries; ++attempt) {
+    serial_flush_input();
+    if (!serial_send("#GETJPOS\n")) {
+      return false;
+    }
+
+    for (int read_attempt = 0; read_attempt < 3; ++read_attempt) {
+      std::string resp = serial_read_line(timeout_ms);
+      auto ok_pos = resp.find("ok");
+      if (ok_pos != std::string::npos && ok_pos > 0) {
+        resp = resp.substr(ok_pos);
+      }
+
+      if (resp.rfind("ok", 0) != 0) {
+        if (resp.empty()) {
+          break;
+        }
+        continue;
+      }
+
+      int n = sscanf(resp.c_str(), "ok %lf %lf %lf %lf %lf %lf",
+        &joints_deg[0], &joints_deg[1], &joints_deg[2],
+        &joints_deg[3], &joints_deg[4], &joints_deg[5]);
+      if (n == static_cast<int>(NUM_JOINTS)) {
+        return true;
+      }
+    }
+
+    if (attempt + 1 < retries) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(retry_sleep_ms));
+    }
+  }
+
+  return false;
 }
 
 

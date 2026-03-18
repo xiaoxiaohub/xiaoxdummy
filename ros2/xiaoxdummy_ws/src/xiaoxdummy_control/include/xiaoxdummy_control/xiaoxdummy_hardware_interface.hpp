@@ -1,9 +1,10 @@
 #ifndef XIAOXDUMMY_HARDWARE_INTERFACE_HPP
 #define XIAOXDUMMY_HARDWARE_INTERFACE_HPP
 
+#include <array>
+#include <cmath>
 #include <string>
 #include <vector>
-#include <cmath>
 
 #include "hardware_interface/system_interface.hpp"
 #include "hardware_interface/handle.hpp"
@@ -77,7 +78,18 @@ private:
   void serial_close();
   bool serial_send(const std::string & msg);
   std::string serial_read_line(int timeout_ms = 200);
-  void serial_flush();
+  void serial_flush_input();
+  bool serial_send_and_read_reply(
+    const std::string & msg,
+    std::string & reply,
+    int retries = 1,
+    int timeout_ms = 200,
+    int retry_sleep_ms = 100);
+  bool request_joint_positions(
+    std::array<double, NUM_JOINTS> & joints_deg,
+    int retries = 1,
+    int timeout_ms = 200,
+    int retry_sleep_ms = 100);
 
   double clamp_deg(double value, size_t joint_idx);
 };

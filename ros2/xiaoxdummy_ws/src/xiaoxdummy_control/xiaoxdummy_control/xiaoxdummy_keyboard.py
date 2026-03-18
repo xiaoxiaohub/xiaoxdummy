@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import sys
+import time
 import tty
 import termios
 import select
@@ -22,7 +23,17 @@ class DummyKeyboardController(Node):
         )
 
         self.joint_names = ['Joint1', 'Joint2', 'Joint3', 'Joint4', 'Joint5', 'Joint6']
-        self.current_positions = None  # Will be initialized from /joint_states
+        self.current_positions = None
+        self.feedback_positions = [0.0] * len(self.joint_names)
+        self.joint_state_ready = False
+        self.last_command_time = 0.0
+
+        self.joint_state_sub = self.create_subscription(
+            JointState,
+            '/joint_states',
+            self._joint_state_cb,
+            10
+        )
 
         self.step = 0.1  # 每次按键变化弧度
         self.limit = 3.14
@@ -43,25 +54,31 @@ class DummyKeyboardController(Node):
 
     def _wait_for_joint_states(self):
         self.get_logger().info('等待 /joint_states 获取当前关节位置...')
-        received = [False]
-        positions = [0.0] * 6
-
-        def cb(msg):
-            for i, name in enumerate(self.joint_names):
-                if name in msg.name:
-                    idx = msg.name.index(name)
-                    positions[i] = msg.position[idx]
-            received[0] = True
-
-        sub = self.create_subscription(JointState, '/joint_states', cb, 10)
-        while rclpy.ok() and not received[0]:
+        while rclpy.ok() and not self.joint_state_ready:
             rclpy.spin_once(self, timeout_sec=0.5)
 
-        self.destroy_subscription(sub)
-        self.current_positions = list(positions)
         self.get_logger().info(
             f'初始关节位置 (rad): {[round(v, 3) for v in self.current_positions]}'
         )
+
+    def _joint_state_cb(self, msg):
+        name_to_index = {name: i for i, name in enumerate(msg.name)}
+        has_full_state = True
+
+        for i, name in enumerate(self.joint_names):
+            idx = name_to_index.get(name)
+            if idx is None or idx >= len(msg.position):
+                has_full_state = False
+                continue
+            self.feedback_positions[i] = msg.position[idx]
+
+        if not has_full_state:
+            return
+
+        if self.current_positions is None or (time.monotonic() - self.last_command_time) > 0.5:
+            self.current_positions = list(self.feedback_positions)
+
+        self.joint_state_ready = True
 
     def get_key(self):
         fd = sys.stdin.fileno()
@@ -81,6 +98,10 @@ class DummyKeyboardController(Node):
         return max(min(value, self.limit), -self.limit)
 
     def publish_positions(self):
+        if self.current_positions is None:
+            self.get_logger().warning('尚未收到完整的 /joint_states，忽略当前按键')
+            return
+
         msg = JointTrajectory()
         # Set stamp to 0 to execute immediately, avoiding sim_time vs wall_time issues
         msg.header.stamp.sec = 0
@@ -93,6 +114,7 @@ class DummyKeyboardController(Node):
 
         msg.points = [point]
         self.publisher.publish(msg)
+        self.last_command_time = time.monotonic()
 
         self.get_logger().info(f'当前关节角: {[round(v, 3) for v in self.current_positions]}')
 

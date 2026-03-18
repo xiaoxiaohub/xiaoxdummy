@@ -2,7 +2,7 @@ from launch import LaunchDescription
 from ament_index_python.packages import get_package_share_directory
 
 from launch_ros.actions import Node
-from launch.actions import TimerAction, ExecuteProcess, OpaqueFunction
+from launch.actions import TimerAction, ExecuteProcess, OpaqueFunction, LogInfo
 from launch.substitutions import Command
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
@@ -10,6 +10,7 @@ from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 import os
+import shutil
 
 from launch.conditions import IfCondition
 from launch.conditions import UnlessCondition
@@ -25,10 +26,28 @@ def _launch_control_file(context):
     if not cf:
         return []
     if cf == 'xiaoxdummy_keyboard.py':
-        return [ExecuteProcess(
-            cmd=['gnome-terminal', '--', 'bash', '-c',
-                 'ros2 run xiaoxdummy_control xiaoxdummy_keyboard.py; exec bash'],
-        )]
+        keyboard_cmd = 'ros2 run xiaoxdummy_control xiaoxdummy_keyboard.py; exec bash'
+        terminal_commands = [
+            ('x-terminal-emulator', ['x-terminal-emulator', '-e', 'bash', '-lc', keyboard_cmd]),
+            ('gnome-terminal', ['gnome-terminal', '--', 'bash', '-lc', keyboard_cmd]),
+            ('konsole', ['konsole', '-e', 'bash', '-lc', keyboard_cmd]),
+            ('xterm', ['xterm', '-e', 'bash', '-lc', keyboard_cmd]),
+        ]
+
+        for terminal_name, cmd in terminal_commands:
+            if shutil.which(terminal_name):
+                return [ExecuteProcess(cmd=cmd, output='screen')]
+
+        return [
+            LogInfo(
+                msg='No supported terminal emulator found; starting keyboard node inline.'
+            ),
+            ExecuteProcess(
+                cmd=['bash', '-lc', 'ros2 run xiaoxdummy_control xiaoxdummy_keyboard.py'],
+                output='screen',
+                emulate_tty=True,
+            )
+        ]
     else:
         return [Node(
             package='xiaoxdummy_control',
