@@ -27,6 +27,10 @@ constexpr size_t kNumJoints = 6;
 constexpr double kDegToRad = M_PI / 180.0;
 constexpr double kRadToDeg = 180.0 / M_PI;
 
+constexpr double kJointDirections[kNumJoints] = {
+  -1.0, 1.0, -1.0, 1.0, -1.0, 1.0,
+};
+
 struct JointLimit
 {
   double min_deg;
@@ -164,7 +168,8 @@ public:
     const rclcpp::Duration &) override
   {
     for (size_t i = 0; i < info_.joints.size(); ++i) {
-      actuator_pos_commands_[i] = clamp_deg(joint_position_commands_[i] * kRadToDeg, i);
+      actuator_pos_commands_[i] = clamp_deg(
+        joint_position_commands_[i] * kRadToDeg * kJointDirections[i], i);
       actuator_vel_commands_[i] = 0.0;
     }
 
@@ -214,8 +219,8 @@ private:
     }
 
     for (size_t i = 0; i < info_.joints.size(); ++i) {
-      joint_positions_[i] = actuator_positions_[i] * kDegToRad;
-      joint_velocities_[i] = actuator_velocities_[i] * kDegToRad;
+      joint_positions_[i] = actuator_positions_[i] * kJointDirections[i] * kDegToRad;
+      joint_velocities_[i] = actuator_velocities_[i] * kJointDirections[i] * kDegToRad;
       if (reset_commands) {
         joint_position_commands_[i] = joint_positions_[i];
       }

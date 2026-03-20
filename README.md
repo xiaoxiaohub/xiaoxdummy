@@ -61,13 +61,17 @@ source install/setup.bash
 
 ### 4. 串口权限（真实硬件）
 
-确保当前用户有串口访问权限：
+查看当前串口设备：
 
 ```bash
-sudo usermod -aG dialout $USER
+ls /dev/ttyACM*
 ```
 
-重新登录后生效。
+赋予串口读写权限：
+
+```bash
+sudo chmod 666 /dev/ttyACM0
+```
 
 ## 使用方法
 
