@@ -1,31 +1,22 @@
 # Xiaoxdummy
 
-基于稚晖君 [Dummy Robot](https://github.com/peng-zhihui/Dummy-Robot) 的开源六轴机械臂项目，包含硬件驱动板、STM32 固件以及完整的 ROS2 控制栈，支持 Gazebo 仿真和真实硬件控制。
+基于稚晖君 [Dummy Robot](https://github.com/peng-zhihui/Dummy-Robot) 的开源六轴机械臂项目，包含 STM32 固件以及完整的 ROS2 控制栈，支持 Gazebo 仿真和真实硬件控制。
 
 ## 项目结构
 
 ```
 xiaoxdummy/
-├── rdrive/           # Rdrive 开源 BLDC 执行器（驱动板、外壳、配置 GUI）
-├── eth2can/          # ETH2CAN 以太网转 CAN 控制器（用于 Dummy2）
-├── firmware/         # STM32 电机控制板固件
-│   ├── dummy-35motor-fw/     # 35 步进电机固件 (STM32F103)
-│   ├── dummy-42motor-fw/     # 42 步进电机固件 (STM32F103)
-│   └── dummy-ref-core-fw/    # 参考核心固件 (STM32F405)
-└── ros2/             # ROS2 工作空间
-    ├── xiaoxdummy_ws/        # 主控制工作空间
-    │   └── src/
-    │       ├── xiaoxdummy_control/      # Launch、控制器配置、键盘控制
-    │       ├── xiaoxdummy_hw/           # ros2_control 硬件接口插件
-    │       ├── xiaoxdummy_firmware/     # 串口固件桥接节点
-    │       └── xiaoxdummy_interface/    # ROS2 服务接口定义
-    └── dummy2_ws/            # Dummy2 (ETH2CAN) 工作空间
+├── firmware/                         # STM32 电机控制板固件
+│   ├── dummy-35motor-fw/             # 35 步进电机固件 (STM32F103)
+│   ├── dummy-42motor-fw/             # 42 步进电机固件 (STM32F103)
+│   └── dummy-ref-core-fw/            # 参考核心固件 (STM32F405)
+└── ros2/
+    └── xiaoxdummy_ws/                # ROS2 工作空间
         └── src/
-            ├── dummy2_can2eth/          # CAN 转以太网服务
-            ├── dummy2_hw/
-            ├── dummy2_interface/
-            ├── dummy2_description/
-            └── rboot_libs/
+            ├── xiaoxdummy_control/   # Launch、控制器配置、键盘控制
+            ├── xiaoxdummy_hw/        # ros2_control 硬件接口插件
+            ├── xiaoxdummy_firmware/  # 串口固件桥接节点
+            └── xiaoxdummy_interface/ # ROS2 服务接口定义
 ```
 
 ## 环境要求
@@ -64,14 +55,6 @@ sudo apt install ros-humble-ros2-control ros-humble-ros2-controllers \
 
 ```bash
 cd ros2/xiaoxdummy_ws
-colcon build --symlink-install
-source install/setup.bash
-```
-
-如果使用 Dummy2（ETH2CAN），还需编译：
-
-```bash
-cd ros2/dummy2_ws
 colcon build --symlink-install
 source install/setup.bash
 ```
@@ -143,15 +126,6 @@ ros2 run xiaoxdummy_control xiaoxdummy_keyboard.py
 | `p` | 查询硬件状态 |
 | `x` | 退出 |
 
-### Dummy2 ETH2CAN 控制
-
-用于 Dummy2 版本的以太网转 CAN 通信：
-
-```bash
-source ros2/dummy2_ws/install/setup.bash
-ros2 launch dummy2_can2eth dummy2_can2eth_server.launch.py ip_address:=192.168.8.88
-```
-
 ## Launch 参数说明
 
 | 参数 | 默认值 | 说明 |
@@ -196,5 +170,3 @@ make
 ## 参考链接
 
 - [Dummy Robot（稚晖君）](https://github.com/peng-zhihui/Dummy-Robot)
-- [ODrive](https://odriverobotics.com/)
-- [Fibre 协议](https://github.com/samuelsadok/fibre)
