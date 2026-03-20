@@ -58,20 +58,16 @@
   <ros2_control name="XiaoxdummySystem" type="system">
 
     <hardware>
-
-      <xacro:if value="$(arg use_real_hardware)">
-        <plugin>xiaoxdummy_control/XiaoxdummyHardwareInterface</plugin>
-        <param name="serial_port">$(arg serial_port)</param>
-        <param name="baud_rate">$(arg baud_rate)</param>
-        <param name="command_speed">$(arg command_speed)</param>
+      <xacro:if value="$(arg use_gazebo)">
+        <plugin>gz_ros2_control/GazeboSimSystem</plugin>
       </xacro:if>
 
-      <xacro:unless value="$(arg use_real_hardware)">
-        <xacro:if value="$(arg use_gazebo)">
-          <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+      <xacro:unless value="$(arg use_gazebo)">
+        <xacro:if value="$(arg use_real_hardware)">
+          <plugin>xiaoxdummy_hw/XiaoxdummyHardware</plugin>
         </xacro:if>
 
-        <xacro:unless value="$(arg use_gazebo)">
+        <xacro:unless value="$(arg use_real_hardware)">
           <plugin>mock_components/GenericSystem</plugin>
         </xacro:unless>
       </xacro:unless>

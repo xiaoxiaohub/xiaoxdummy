@@ -1,9 +1,0 @@
-<library path="xiaoxdummy_hardware_interface">
-  <class name="xiaoxdummy_control/XiaoxdummyHardwareInterface"
-         type="xiaoxdummy_control::XiaoxdummyHardwareInterface"
-         base_class_type="hardware_interface::SystemInterface">
-    <description>
-      Hardware interface for Xiaoxdummy robot arm via serial (ASCII protocol).
-    </description>
-  </class>
-</library>

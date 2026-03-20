@@ -5,7 +5,7 @@ from launch_ros.actions import Node
 from launch.actions import TimerAction, ExecuteProcess, OpaqueFunction, LogInfo
 from launch.substitutions import Command
 from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 
@@ -154,6 +154,25 @@ def generate_launch_description():
         condition=UnlessCondition(use_gazebo)
     )
 
+    firmware_server_node = Node(
+        package='xiaoxdummy_firmware',
+        executable='xiaoxdummy_firmware_server',
+        name='xiaoxdummy_firmware_server',
+        output='screen',
+        parameters=[{
+            'serial_port': serial_port,
+            'baud_rate': baud_rate,
+            'command_mode': 2,
+            'command_speed': command_speed,
+        }],
+        condition=IfCondition(
+            PythonExpression([
+                '"', use_real_hardware, '" in ["true", "True"] and "',
+                use_gazebo, '" not in ["true", "True"]'
+            ])
+        )
+    )
+
 
     robot_desc_node = Node(
         package='robot_state_publisher',
@@ -189,10 +208,14 @@ def generate_launch_description():
 
 
     actions.extend([
-        controllers_node,
         robot_desc_node,
         rviz_node,
+        firmware_server_node,
         controller_manager_node,
+        TimerAction(
+            period=2.0,
+            actions=[controllers_node],
+        ),
         TimerAction(
             period=5.0,
             actions=[OpaqueFunction(function=_launch_control_file)],
