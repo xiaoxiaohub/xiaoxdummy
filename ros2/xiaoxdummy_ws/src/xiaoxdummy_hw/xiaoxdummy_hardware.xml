@@ -1,0 +1,8 @@
+<library path="xiaoxdummy_hardware">
+  <class
+    name="xiaoxdummy_hw/XiaoxdummyHardware"
+    type="xiaoxdummy_hw::XiaoxdummyHardware"
+    base_class_type="hardware_interface::SystemInterface">
+    <description>Hardware interface for Xiaoxdummy using the firmware service bridge.</description>
+  </class>
+</library>
