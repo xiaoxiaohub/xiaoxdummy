@@ -377,12 +377,20 @@ private:
 
   double joint_to_actuator_deg(double joint_deg, size_t joint_idx) const
   {
-    return joint_deg * joint_directions_[joint_idx];
+    double actuator_deg = joint_deg * joint_directions_[joint_idx];
+    if (joint_idx == 2) {
+      actuator_deg += 90.0;
+    }
+    return actuator_deg;
   }
 
   double actuator_to_joint_rad(double actuator_deg, size_t joint_idx) const
   {
-    return actuator_deg * joint_directions_[joint_idx] * kDegToRad;
+    double joint_deg = actuator_deg * joint_directions_[joint_idx];
+    if (joint_idx == 2) {
+      joint_deg -= 90.0;
+    }
+    return joint_deg * kDegToRad;
   }
 
   std::vector<double> actuator_pos_commands_;
