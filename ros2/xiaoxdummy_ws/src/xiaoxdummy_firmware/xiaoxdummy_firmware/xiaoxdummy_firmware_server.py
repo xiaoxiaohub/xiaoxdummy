@@ -181,7 +181,7 @@ class XiaoxdummyFirmwareServer(Node):
 
     def stop_session(self):
         if self.serial_fd >= 0:
-            self.send_control_command('!STOP\n', retries=3)
+            self.stop_and_disable_motors(retries=3)
         self.motors_enabled = False
         self.serial_close()
         return True, 'serial session closed'
@@ -192,17 +192,29 @@ class XiaoxdummyFirmwareServer(Node):
             if not ok:
                 return ok, message
 
-        command = '!START\n' if enabled else '!STOP\n'
-        if not self.send_control_command(command, retries=self.init_retries):
+        if enabled:
+            command_ok = self.send_control_command('!START\n', retries=self.init_retries)
+        else:
+            command_ok = self.stop_and_disable_motors(retries=self.init_retries)
+        if not command_ok:
             recovered = self.recover_connection('motor state change failed')
-            if not recovered or not self.send_control_command(command, retries=self.init_retries):
-                return False, f'failed to send {command.strip()}'
+            if enabled:
+                command_ok = self.send_control_command('!START\n', retries=self.init_retries)
+            else:
+                command_ok = self.stop_and_disable_motors(retries=self.init_retries)
+            if not recovered or not command_ok:
+                return False, 'failed to enable motors' if enabled else 'failed to disable motors'
 
         self.motors_enabled = enabled
         positions = self.request_joint_positions()
         if positions is not None:
             self.update_feedback_cache(positions, reset_velocity=True)
         return True, 'motors enabled' if enabled else 'motors disabled'
+
+    def stop_and_disable_motors(self, retries):
+        stop_ok = self.send_control_command('!STOP\n', retries=retries)
+        disable_ok = self.send_control_command('!DISABLE\n', retries=retries)
+        return stop_ok and disable_ok
 
     def recover_connection(self, reason):
         restore_motor_state = self.motors_enabled
