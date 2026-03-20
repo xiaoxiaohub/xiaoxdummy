@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cmath>
+#include <exception>
 #include <memory>
 #include <string>
 #include <vector>
@@ -26,10 +27,6 @@ namespace
 constexpr size_t kNumJoints = 6;
 constexpr double kDegToRad = M_PI / 180.0;
 constexpr double kRadToDeg = 180.0 / M_PI;
-
-constexpr double kJointDirections[kNumJoints] = {
-  -1.0, 1.0, -1.0, 1.0, -1.0, 1.0,
-};
 
 struct JointLimit
 {
@@ -67,6 +64,9 @@ public:
     }
 
     initialize_vectors();
+    if (!initialize_joint_directions()) {
+      return CallbackReturn::ERROR;
+    }
 
     node_ = std::make_shared<rclcpp::Node>("xiaoxdummy_hardware_node");
     init_firmware_client_ =
@@ -168,8 +168,8 @@ public:
     const rclcpp::Duration &) override
   {
     for (size_t i = 0; i < info_.joints.size(); ++i) {
-      actuator_pos_commands_[i] = clamp_deg(
-        joint_position_commands_[i] * kRadToDeg * kJointDirections[i], i);
+      const double joint_command_deg = clamp_joint_command_deg(joint_position_commands_[i], i);
+      actuator_pos_commands_[i] = joint_to_actuator_deg(joint_command_deg, i);
       actuator_vel_commands_[i] = 0.0;
     }
 
@@ -212,6 +212,49 @@ private:
     joint_position_commands_.assign(kNumJoints, 0.0);
   }
 
+  bool initialize_joint_directions()
+  {
+    joint_directions_.assign(kNumJoints, 1.0);
+
+    for (size_t i = 0; i < info_.joints.size(); ++i) {
+      const auto parameter_it = info_.joints[i].parameters.find("direction");
+      if (parameter_it == info_.joints[i].parameters.end()) {
+        continue;
+      }
+
+      try {
+        const double direction = std::stod(parameter_it->second);
+        if (direction == 0.0) {
+          RCLCPP_ERROR(
+            rclcpp::get_logger("XiaoxdummyHardware"),
+            "Joint %s has invalid direction 0",
+            info_.joints[i].name.c_str());
+          return false;
+        }
+        joint_directions_[i] = direction > 0.0 ? 1.0 : -1.0;
+      } catch (const std::exception & ex) {
+        RCLCPP_ERROR(
+          rclcpp::get_logger("XiaoxdummyHardware"),
+          "Failed to parse direction for joint %s: %s",
+          info_.joints[i].name.c_str(),
+          ex.what());
+        return false;
+      }
+    }
+
+    RCLCPP_INFO(
+      rclcpp::get_logger("XiaoxdummyHardware"),
+      "Joint directions loaded as [%.0f, %.0f, %.0f, %.0f, %.0f, %.0f]",
+      joint_directions_[0],
+      joint_directions_[1],
+      joint_directions_[2],
+      joint_directions_[3],
+      joint_directions_[4],
+      joint_directions_[5]);
+
+    return true;
+  }
+
   bool refresh_feedback(bool reset_commands)
   {
     if (!read_firmware(actuator_positions_, actuator_velocities_)) {
@@ -219,8 +262,8 @@ private:
     }
 
     for (size_t i = 0; i < info_.joints.size(); ++i) {
-      joint_positions_[i] = actuator_positions_[i] * kJointDirections[i] * kDegToRad;
-      joint_velocities_[i] = actuator_velocities_[i] * kJointDirections[i] * kDegToRad;
+      joint_positions_[i] = actuator_to_joint_rad(actuator_positions_[i], i);
+      joint_velocities_[i] = actuator_to_joint_rad(actuator_velocities_[i], i);
       if (reset_commands) {
         joint_position_commands_[i] = joint_positions_[i];
       }
@@ -327,6 +370,21 @@ private:
     return std::clamp(value, kJointLimits[joint_idx].min_deg, kJointLimits[joint_idx].max_deg);
   }
 
+  double clamp_joint_command_deg(double joint_command_rad, size_t joint_idx) const
+  {
+    return clamp_deg(joint_command_rad * kRadToDeg, joint_idx);
+  }
+
+  double joint_to_actuator_deg(double joint_deg, size_t joint_idx) const
+  {
+    return joint_deg * joint_directions_[joint_idx];
+  }
+
+  double actuator_to_joint_rad(double actuator_deg, size_t joint_idx) const
+  {
+    return actuator_deg * joint_directions_[joint_idx] * kDegToRad;
+  }
+
   std::vector<double> actuator_pos_commands_;
   std::vector<double> actuator_vel_commands_;
   std::vector<double> actuator_positions_;
@@ -334,6 +392,7 @@ private:
   std::vector<double> joint_positions_;
   std::vector<double> joint_velocities_;
   std::vector<double> joint_position_commands_;
+  std::vector<double> joint_directions_;
 
   std::shared_ptr<rclcpp::Node> node_;
   rclcpp::Client<xiaoxdummy_interface::srv::InitFirmware>::SharedPtr init_firmware_client_;

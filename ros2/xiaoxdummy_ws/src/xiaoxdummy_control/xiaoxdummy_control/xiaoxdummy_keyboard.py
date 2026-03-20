@@ -221,10 +221,10 @@ class DummyKeyboardController(Node):
         if self.last_joint_state_time <= 0.0:
             return
 
-        if (time.monotonic() - self.last_joint_state_time) > 2.0 and not self.feedback_stale_warned:
+        if (time.monotonic() - self.last_joint_state_time) > 10.0 and not self.feedback_stale_warned:
             self.feedback_stale_warned = True
             self.get_logger().warning(
-                '/joint_states 已超过 2 秒未更新，RViz TF 和键盘控制都会失效，请检查 controller_manager 或串口连接'
+                '/joint_states 已超过 10 秒未更新，RViz TF 和键盘控制都会失效，请检查 controller_manager 或串口连接'
             )
 
     def publish_positions(self, positions=None, move_name='关节命令', duration_sec=1.0):

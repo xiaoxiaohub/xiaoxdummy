@@ -74,9 +74,11 @@
 
     </hardware>
 
+    <!-- 核心板 ASCII 协议已使用关节空间角度；仅在你的硬件协议符号不同于该约定时修改 direction -->
 
     <!-- Joint1 -->
     <joint name="Joint1">
+      <param name="direction">1.0</param>
       <command_interface name="position"/>
       <state_interface name="position">
         <param name="initial_value">0</param>
@@ -86,6 +88,7 @@
 
     <!-- Joint2 -->
     <joint name="Joint2">
+      <param name="direction">1.0</param>
       <command_interface name="position"/>
       <state_interface name="position">
         <param name="initial_value">0</param>
@@ -95,6 +98,7 @@
 
     <!-- Joint3 -->
     <joint name="Joint3">
+      <param name="direction">1.0</param>
       <command_interface name="position"/>
       <state_interface name="position">
         <param name="initial_value">0</param>
@@ -104,6 +108,7 @@
 
     <!-- Joint4 -->
     <joint name="Joint4">
+      <param name="direction">1.0</param>
       <command_interface name="position"/>
       <state_interface name="position">
         <param name="initial_value">0</param>
@@ -113,6 +118,7 @@
 
     <!-- Joint5 -->
     <joint name="Joint5">
+      <param name="direction">1.0</param>
       <command_interface name="position"/>
       <state_interface name="position">
         <param name="initial_value">0</param>
@@ -122,6 +128,7 @@
 
     <!-- Joint6 -->
     <joint name="Joint6">
+      <param name="direction">1.0</param>
       <command_interface name="position"/>
       <state_interface name="position">
         <param name="initial_value">0</param>
