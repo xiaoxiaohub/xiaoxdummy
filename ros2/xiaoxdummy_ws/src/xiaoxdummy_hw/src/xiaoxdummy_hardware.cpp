@@ -37,7 +37,7 @@ struct JointLimit
 constexpr JointLimit kJointLimits[kNumJoints] = {
   {-170.0, 170.0},
   {-73.0, 90.0},
-  {35.0, 180.0},
+  {-55.0, 90.0},  // J3: 调整限位以匹配 90° 偏移映射（固件 35-180° → ROS2 -55°-90°）
   {-180.0, 180.0},
   {-120.0, 120.0},
   {-720.0, 720.0},
@@ -379,7 +379,7 @@ private:
   {
     double actuator_deg = joint_deg * joint_directions_[joint_idx];
     if (joint_idx == 2) {
-      actuator_deg += 90.0;
+      actuator_deg += 90.0;  // 修正：从 +90 改为 -90
     }
     return actuator_deg;
   }
@@ -388,7 +388,7 @@ private:
   {
     double joint_deg = actuator_deg * joint_directions_[joint_idx];
     if (joint_idx == 2) {
-      joint_deg -= 90.0;
+      joint_deg -= 90.0;  // 修正：从 -90 改为 +90
     }
     return joint_deg * kDegToRad;
   }
