@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot name="xiaoxdummy">
+
+  <link name="Base_Link">
+    <inertial>
+      <origin xyz="0.0234579864342646 4.16138602459242E-05 0.0298797662531896" rpy="0 0 0"/>
+      <mass value="7.42986278180058"/>
+      <inertia ixx="0.0180152527135641" ixy="-1.47598604288625E-06" ixz="7.85324242378648E-06"
+               iyy="0.0174543464639099" iyz="-1.86487908268344E-06" izz="0.0326261531558886"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="file:///home/jiehuang/xiaoxdummy/ros2/xiaoxdummy_ws/src/xiaox_description/meshes/base_link.stl"/>
+      </geometry>
+      <material name="grey">
+        <color rgba="0.75 0.75 0.75 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="file:///home/jiehuang/xiaoxdummy/ros2/xiaoxdummy_ws/src/xiaox_description/meshes/base_link.stl"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="Link1">
+    <inertial>
+      <origin xyz="0.00955411921483432 -0.00972117303858951 0.0173362747949995" rpy="0 0 0"/>
+      <mass value="0.415906699107813"/>
+      <inertia ixx="0.000192728972418038" ixy="8.05473407384545E-05" ixz="-7.04335001621821E-05"
+               iyy="0.000237256162569907" iyz="4.5128264830821E-05" izz="0.000291498728900993"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="file:///home/jiehuang/xiaoxdummy/ros2/xiaoxdummy_ws/src/xiaox_description/meshes/link1.stl"/>
+      </geometry>
+      <material name="grey"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="file:///home/jiehuang/xiaoxdummy/ros2/xiaoxdummy_ws/src/xiaox_description/meshes/link1.stl"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="Joint1" type="revolute">
+    <origin xyz="0 0 0.102" rpy="0 0 0"/>
+    <parent link="Base_Link"/>
+    <child link="Link1"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.001966" upper="3.001966" effort="100" velocity="100"/>
+  </joint>
+
+  <link name="Link2">
+    <inertial>
+      <origin xyz="-0.000110586377565945 0.0728147333851238 -0.000743246002467996" rpy="0 0 0"/>
+      <mass value="2.46172843734832"/>
+      <inertia ixx="0.00254164147605489" ixy="1.82445844959651E-05" ixz="-3.05216672082979E-06"
+               iyy="0.000666997424231972" iyz="0.000495528512907501" izz="0.00268029807192183"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="file:///home/jiehuang/xiaoxdummy/ros2/xiaoxdummy_ws/src/xiaox_description/meshes/link2.stl"/>
+      </geometry>
+      <material name="grey"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="file:///home/jiehuang/xiaoxdummy/ros2/xiaoxdummy_ws/src/xiaox_description/meshes/link2.stl"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="Joint2" type="revolute">
+    <origin xyz="0.035 0 0.0375" rpy="1.5708 0 -3.1416"/>
+    <parent link="Link1"/>
+    <child link="Link2"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-1.570796" upper="1.308997" effort="100" velocity="100"/>
+  </joint>
+
+  <link name="Link3">
+    <inertial>
+      <origin xyz="0.0452337573705079 -0.0146862138541698 0.00404107840790841" rpy="0 0 0"/>
+      <mass value="0.976841195302987"/>
+      <inertia ixx="0.000213598941034039" ixy="-5.08647076727105E-06" ixz="7.4844221957076E-05"
+               iyy="0.000451375804899685" iyz="2.69568387770756E-06" izz="0.000333221217501319"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="file:///home/jiehuang/xiaoxdummy/ros2/xiaoxdummy_ws/src/xiaox_description/meshes/link3.stl"/>
+      </geometry>
+      <material name="grey"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="file:///home/jiehuang/xiaoxdummy/ros2/xiaoxdummy_ws/src/xiaox_description/meshes/link3.stl"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="Joint3" type="revolute">
+    <origin xyz="0 0.146 0" rpy="0 0 1.5707963267949"/>
+    <parent link="Link2"/>
+    <child link="Link3"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-1.500983" upper="1.570796" effort="100" velocity="100"/>
+  </joint>
+
+  <link name="Link4">
+    <inertial>
+      <origin xyz="3.19413715010042E-05 -0.00188197668693867 0.074425365780467" rpy="0 0 0"/>
+      <mass value="0.781860892466404"/>
+      <inertia ixx="0.000312775868862146" ixy="2.88922858791269E-09" ixz="-1.13047794806522E-07"
+               iyy="0.00036955388052533" iyz="-2.25637508480122E-05" izz="0.000100456723216078"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="file:///home/jiehuang/xiaoxdummy/ros2/xiaoxdummy_ws/src/xiaox_description/meshes/link4.stl"/>
+      </geometry>
+      <material name="grey"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="file:///home/jiehuang/xiaoxdummy/ros2/xiaoxdummy_ws/src/xiaox_description/meshes/link4.stl"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="Joint4" type="revolute">
+    <origin xyz="0.052 0 0" rpy="-1.5707963267949 0 0"/>
+    <parent link="Link3"/>
+    <child link="Link4"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.141593" upper="3.141593" effort="100" velocity="100"/>
+  </joint>
+
+  <link name="Link5">
+    <inertial>
+      <origin xyz="6.32659218006704E-05 0.0378393520721391 -0.00653879475257049" rpy="0 0 0"/>
+      <mass value="0.393021924463493"/>
+      <inertia ixx="0.000148490539597373" ixy="-3.66157118038849E-10" ixz="2.21226212112064E-07"
+               iyy="8.52360544646063E-05" iyz="-2.51177165202851E-05" izz="0.000144262447135981"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="file:///home/jiehuang/xiaoxdummy/ros2/xiaoxdummy_ws/src/xiaox_description/meshes/link5.stl"/>
+      </geometry>
+      <material name="grey"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="file:///home/jiehuang/xiaoxdummy/ros2/xiaoxdummy_ws/src/xiaox_description/meshes/link5.stl"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="Joint5" type="revolute">
+    <origin xyz="0 0 0.117" rpy="1.5708 0 0"/>
+    <parent link="Link4"/>
+    <child link="Link5"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-1.919862" upper="2.094395" effort="100" velocity="100"/>
+  </joint>
+
+  <link name="Link6">
+    <inertial>
+      <origin xyz="0 0 0.0075" rpy="0 0 0"/>
+      <mass value="0.1062"/>
+      <inertia ixx="1.5611E-05" ixy="0" ixz="0"
+               iyy="1.5611E-05" iyz="0" izz="2.7258E-05"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="file:///home/jiehuang/xiaoxdummy/ros2/xiaoxdummy_ws/src/xiaox_description/meshes/link6.stl"/>
+      </geometry>
+      <material name="dark_grey">
+        <color rgba="0.53 0.55 0.55 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="file:///home/jiehuang/xiaoxdummy/ros2/xiaoxdummy_ws/src/xiaox_description/meshes/link6.stl"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="Joint6" type="revolute">
+    <origin xyz="0 0.0625 0" rpy="-1.5708 0 0"/>
+    <parent link="Link5"/>
+    <child link="Link6"/>
+    <axis xyz="0 0 -1"/>
+    <limit lower="-3.141593" upper="3.141593" effort="100" velocity="100"/>
+  </joint>
+
+</robot>
