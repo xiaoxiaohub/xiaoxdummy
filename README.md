@@ -1,4 +1,4 @@
-# Xiaoxdummy
+# Xiaox Robot Arm
 
 基于稚晖君 [Dummy Robot](https://github.com/peng-zhihui/Dummy-Robot) 的开源六轴机械臂项目，包含 STM32 固件以及完整的 ROS2 控制栈，支持 Gazebo 仿真和真实硬件控制。
 
@@ -13,11 +13,24 @@ xiaoxdummy/
 └── ros2/
     └── xiaoxdummy_ws/                # ROS2 工作空间
         └── src/
-            ├── xiaoxdummy_control/   # Launch、控制器配置、键盘控制
-            ├── xiaoxdummy_hw/        # ros2_control 硬件接口插件
-            ├── xiaoxdummy_firmware/  # 串口固件桥接节点
-            └── xiaoxdummy_interface/ # ROS2 服务接口定义
+            ├── xiaox_interfaces/     # ROS2 服务/消息/动作接口定义
+            ├── xiaox_description/    # URDF、网格模型、RViz配置
+            ├── xiaox_bringup/        # 启动文件（实机、仿真）
+            ├── xiaox_controllers/    # 控制器配置
+            ├── xiaox_hardware/       # ros2_control 硬件接口插件
+            └── xiaox_driver/         # 串口驱动节点（与固件通信）
 ```
+
+## 包职责说明
+
+| 包名 | 类型 | 职责 |
+|------|------|------|
+| `xiaox_interfaces` | CMake | 定义硬件交互的服务接口（`InitDevice`, `ReadJoints`, `WriteJoints`） |
+| `xiaox_description` | CMake | URDF/Xacro描述、网格文件、RViz配置 |
+| `xiaox_bringup` | CMake+Python | 启动文件、键盘控制脚本 |
+| `xiaox_controllers` | CMake | 控制器参数配置（`joint_trajectory_controller` 等） |
+| `xiaox_hardware` | CMake | ros2_control 硬件接口插件，连接控制器与驱动 |
+| `xiaox_driver` | Python | 串口通信节点，直接与固件进行 ASCII 协议交互 |
 
 ## 环境要求
 
@@ -81,7 +94,7 @@ sudo chmod 666 /dev/ttyACM0
 
 ```bash
 source ros2/xiaoxdummy_ws/install/setup.bash
-ros2 launch xiaoxdummy_control xiaoxdummy_control_launch.py use_gazebo:=true
+ros2 launch xiaox_bringup robot.launch.py use_gazebo:=true
 ```
 
 ### 真实硬件控制
@@ -90,11 +103,17 @@ ros2 launch xiaoxdummy_control xiaoxdummy_control_launch.py use_gazebo:=true
 
 ```bash
 source ros2/xiaoxdummy_ws/install/setup.bash
-ros2 launch xiaoxdummy_control xiaoxdummy_control_launch.py \
+ros2 launch xiaox_bringup robot.launch.py \
   use_real_hardware:=true \
   serial_port:=/dev/ttyACM0 \
   baud_rate:=115200 \
   command_speed:=180.0
+```
+
+或者单独启动驱动节点：
+
+```bash
+ros2 launch xiaox_driver driver.launch.py serial_port:=/dev/ttyACM0
 ```
 
 ### 键盘控制
@@ -102,15 +121,15 @@ ros2 launch xiaoxdummy_control xiaoxdummy_control_launch.py \
 在启动 launch 时加上 `control_file` 参数，会自动打开一个终端窗口用于键盘控制：
 
 ```bash
-ros2 launch xiaoxdummy_control xiaoxdummy_control_launch.py \
+ros2 launch xiaox_bringup robot.launch.py \
   use_real_hardware:=true \
-  control_file:=xiaoxdummy_keyboard.py
+  control_file:=xiaox_keyboard.py
 ```
 
 也可以单独启动键盘控制节点：
 
 ```bash
-ros2 run xiaoxdummy_control xiaoxdummy_keyboard.py
+ros2 run xiaox_bringup xiaox_keyboard.py
 ```
 
 键盘按键映射：
@@ -139,7 +158,29 @@ ros2 run xiaoxdummy_control xiaoxdummy_keyboard.py
 | `serial_port` | `/dev/ttyACM0` | 串口设备路径 |
 | `baud_rate` | `115200` | 串口波特率 |
 | `command_speed` | `180.0` | 关节运动速度 (deg/s) |
-| `control_file` | （空） | 控制脚本，可选 `xiaoxdummy_keyboard.py` |
+| `control_file` | （空） | 控制脚本，可选 `xiaox_keyboard.py` |
+
+## 系统架构
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   上位机 ROS2   │     │   ros2_control  │     │   固件核心板    │
+│                 │     │                 │     │   (STM32F4)    │
+│  ┌───────────┐ │     │  ┌───────────┐ │     │                │
+│  │xiaox_bringup│ │────>│  │xiaox_hardware│ │<───>│  UART/ASCII   │
+│  │(启动/键盘) │ │     │  │(硬件接口)  │ │     │   协议通信     │
+│  └───────────┘ │     │  └───────────┘ │     │                │
+│       │         │     │       ▲         │     │                │
+│       ▼         │     │       │         │     │                │
+│  ┌───────────┐ │     │  ┌───────────┐ │     │                │
+│  │xiaox_driver │ │     │  │控制器管理器 │ │     │                │
+│  │(串口驱动)  │ │     │  └───────────┘ │     │                │
+│  └───────────┘ │     └─────────────────┘     └─────────────────┘
+│       │         │
+│       ▼         │
+│  /dev/ttyACM0  │
+└─────────────────┘
+```
 
 ## 固件编译
 
@@ -174,3 +215,4 @@ make
 ## 参考链接
 
 - [Dummy Robot（稚晖君）](https://github.com/peng-zhihui/Dummy-Robot)
+
